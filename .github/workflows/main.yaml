@@ -69,7 +69,7 @@ jobs:
       - name: Download wxWidgets
         if: steps.wxwidgets-cache.outputs.cache-hit != 'true'
         run: |
-          rm -rf wxWidgets*
+          echo "cache hit: {{ steps.wxwidgets-cache.outputs.cache-hit }}"
           wget https://github.com/wxWidgets/wxWidgets/releases/download/v${{ env.WXWIDGETS_VERSION }}/wxWidgets-${{ env.WXWIDGETS_VERSION }}.zip
           unzip wxWidgets-${{ env.WXWIDGETS_VERSION }}.zip -d wxWidgets
           sed -i -r -e 's/wxUSE_POSTSCRIPT +0/wxUSE_POSTSCRIPT 1/' wxWidgets/include/wx/msw/setup.h
@@ -118,6 +118,7 @@ jobs:
           path: otp/release/win32/otp*.exe
 
   build:
+    if: false
     name: Build Erlang/OTP
     runs-on: ubuntu-latest
     needs: pack
