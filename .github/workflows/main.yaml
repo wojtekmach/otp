@@ -54,6 +54,7 @@ jobs:
         run: apt update && apt install -y g++-mingw-w64 gcc-mingw-w64 make autoconf unzip
 
       - name: Install openssl
+        if: false
         shell: cmd
         run: |
           choco install openssl
@@ -65,8 +66,6 @@ jobs:
         with:
           path: wxWidgets
           key: wxWidgets-${{ env.WXWIDGETS_VERSION }}-${{ runner.os }}
-
-      - run: echo "cache-hit=${{ steps.wxwidgets-cache.outputs.cache-hit }}"
 
       - name: Download wxWidgets
         if: steps.wxwidgets-cache.outputs.cache-hit != 'true'
@@ -98,6 +97,7 @@ jobs:
           name: otp_git_archive
 
       - name: Compile Erlang
+        if: false
         run: |
           mkdir -p /mnt/c/opt/local64/pgm/
           cp -R wxWidgets /mnt/c/opt/local64/pgm/wxWidgets-${{ env.WXWIDGETS_VERSION }}
@@ -113,6 +113,7 @@ jobs:
           ./otp_build installer_win32
 
       - name: Upload installer
+        if: false
         uses: actions/upload-artifact@v2
         with:
           name: otp_prebuilt_win32
