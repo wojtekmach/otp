@@ -64,9 +64,9 @@ jobs:
         uses: actions/cache@v2
         with:
           path: wxWidgets
-          key: wxWidgets-${{ env.WXWIDGETS_VERSION }}-${{ runner.os }}
+          key: wxWidgets-${{ env.WXWIDGETS_VERSION }}-${{ runner.os }}-v5
 
-      - run: echo "cache-hit={{ steps.wxwidgets-cache.outputs.cache-hit }}"
+      - run: echo "cache-hit=${{ steps.wxwidgets-cache.outputs.cache-hit }}"
 
       - name: Download wxWidgets
         if: steps.wxwidgets-cache.outputs.cache-hit != 'true'
