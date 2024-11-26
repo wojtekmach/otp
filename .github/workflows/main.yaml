@@ -341,7 +341,7 @@ jobs:
           export ERLC_USE_SERVER=true
           export ERTS_SKIP_DEPEND=true
           eval `./otp_build env_win32 x64`
-          ./otp_build configure
+          ./otp_build configure --disable-jit
           if cat erts/CONF_INFO ||
              grep -v "Static linking with OpenSSL 3.0" lib/*/CONF_INFO ||
              cat lib/*/SKIP ||
