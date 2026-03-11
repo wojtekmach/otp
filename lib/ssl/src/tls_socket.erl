@@ -566,6 +566,9 @@ emulated_options([], Inet,Emulated) ->
 validate_inet_option(mode, Value)
   when Value =/= list, Value =/= binary ->
     throw({error, {options, {mode,Value}}});
+validate_inet_option(packet, {Fun, _})
+  when is_function(Fun, 2) ->
+    ok;
 validate_inet_option(packet, Value)
   when not (is_atom(Value) orelse is_integer(Value)) ->
     throw({error, {options, {packet,Value}}});

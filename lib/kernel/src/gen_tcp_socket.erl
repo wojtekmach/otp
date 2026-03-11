@@ -1375,6 +1375,7 @@ is_packet_option_value(Value) ->
         httph -> true;
         http_bin -> true;
         httph_bin -> true;
+        {Fun, _} when is_function(Fun, 2) -> true;
         _ -> false
     end.
 
@@ -2382,14 +2383,26 @@ handle_recv(
             end;
 
         true ->
-            MinHdrLen = packet_header_length(PacketType),
-            if
-                BufferSize < MinHdrLen ->
-                    handle_recv_more(
-                      P, D, ActionsR, Buffer, BufferSize, MinHdrLen);
-                true ->
-                    handle_recv_packet(
-                      P, D, ActionsR, Buffer, BufferSize, CS)
+            case PacketType of
+                {Fun, _} when is_function(Fun, 2) ->
+                    if
+                        BufferSize =:= 0 ->
+                            handle_recv_more(
+                              P, D, ActionsR, Buffer, BufferSize, 0);
+                        true ->
+                            handle_recv_packet(
+                              P, D, ActionsR, Buffer, BufferSize, CS)
+                    end;
+                _ ->
+                    MinHdrLen = packet_header_length(PacketType),
+                    if
+                        BufferSize < MinHdrLen ->
+                            handle_recv_more(
+                              P, D, ActionsR, Buffer, BufferSize, MinHdrLen);
+                        true ->
+                            handle_recv_packet(
+                              P, D, ActionsR, Buffer, BufferSize, CS)
+                    end
             end
     end.
 
@@ -2397,6 +2410,10 @@ handle_recv_packet(P, D, ActionsR, Buffer, BufferSize, recv = _CS) ->
     %% ?DBG({Buffer, BufferSize, _CS}),
     Data = condense_buffer(Buffer),
     case decode_packet(D, Data) of
+        {ok, Tag, Decoded, Rest, NewState} ->
+            D_1 = update_packet_state(D#{buffer := Rest}, NewState),
+            handle_connected(
+              P, recv_custom_data_deliver(P, D_1, ActionsR, Tag, Decoded));
         {ok, Decoded, Rest} ->
             D_1 = D#{buffer := Rest},
             handle_connected(
@@ -2409,6 +2426,13 @@ handle_recv_packet(P, D, ActionsR, Buffer, BufferSize, recv = _CS) ->
             %% with read_ahead=false would be considered as misuse
             handle_recv_more(
               P, D, ActionsR, Data, BufferSize, BufferSize + 1);
+        {more, Length, NewState} ->
+            D_1 = update_packet_state(D, NewState),
+            handle_recv_more_custom(
+              P, D_1, ActionsR, Data, BufferSize, Length);
+        {more, Length} when Length =< BufferSize ->
+            handle_recv_more(
+              P, D, ActionsR, Data, BufferSize, BufferSize);
         {more, Length} ->
             handle_recv_more(
               P, D, ActionsR, Data, BufferSize, Length);
@@ -2422,16 +2446,33 @@ handle_recv_packet(
     %% ?DBG({Buffer, _BufferSize, _CS}),
     Data = condense_buffer(Buffer),
     case decode_packet(D, Data) of
+        {ok, Tag, Decoded, Rest, NewState} ->
+            D_1 = update_packet_state(D#{buffer := Rest}, NewState),
+            handle_recv_error(
+              P, recv_custom_data_deliver(P, D_1, ActionsR, Tag, Decoded),
+              Reason);
         {ok, Decoded, Rest} ->
             D_1 = D#{buffer := Rest},
             handle_recv_error(
               P, recv_data_deliver(P, D_1, ActionsR, Decoded),
               Reason);
+        {more, _, NewState} ->
+            D_1 = update_packet_state(D, NewState),
+            handle_recv_error(P, D_1, ActionsR, Reason);
         {more, _} ->
             handle_recv_error(P, D, ActionsR, Reason);
         {error, _} ->
             handle_recv_error(P, D, ActionsR, Reason)
     end.
+
+update_packet_state(#{packet := {Fun, _}} = D, NewState) ->
+    D#{packet := {Fun, NewState}}.
+
+handle_recv_more_custom(P, D, ActionsR, Data, BufferSize, Length)
+  when Length =< BufferSize ->
+    handle_recv_more(P, D, ActionsR, Data, BufferSize, BufferSize);
+handle_recv_more_custom(P, D, ActionsR, Data, BufferSize, Length) ->
+    handle_recv_more(P, D, ActionsR, Data, BufferSize, Length).
 
 handle_recv_more(
   P, D, ActionsR, Buffer, BufferSize, Length) ->
@@ -2500,6 +2541,10 @@ handle_recv_more(
     end.
 
 
+decode_packet(
+  #{packet         := {Fun, State}},
+  Data) when is_function(Fun, 2) ->
+    Fun(Data, State);
 decode_packet(
   #{packet         := (PacketType = line),
     line_delimiter := LineDelimiter,
@@ -2792,6 +2837,37 @@ recv_data_deliver(
                 N when is_integer(N) ->
                     {recv_start(next_packet(D, Packet, Data, Active - 1)),
                      ActionsR}
+            end
+    end.
+
+%% Deliver data from custom decoder (no mode/header conversion)
+%% -> {NewD, NewActionsR}
+recv_custom_data_deliver(
+  #params{owner = Owner} = P,
+  D,
+  ActionsR, Tag, Data) ->
+    case D of
+        #{recv_from := From} ->
+            {recv_stop(D),
+             [{reply, From, {ok, Data}},
+              {{timeout, recv}, cancel}
+              | ActionsR]};
+        #{active := false} ->
+            D_1 = D#{buffer := buffer(Data, maps:get(buffer, D))},
+            {recv_stop(D_1), ActionsR};
+        #{active := Active} ->
+            ModuleSocket = module_socket(P),
+            Owner ! {Tag, ModuleSocket, Data},
+            case Active of
+                true ->
+                    {recv_start(D), ActionsR};
+                once ->
+                    {recv_stop(D#{active => false}), ActionsR};
+                1 ->
+                    Owner ! {tcp_passive, ModuleSocket},
+                    {recv_stop(D#{active => false}), ActionsR};
+                N when is_integer(N) ->
+                    {recv_start(D#{active => Active - 1}), ActionsR}
             end
     end.
 

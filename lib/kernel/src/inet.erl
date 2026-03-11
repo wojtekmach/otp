@@ -3592,7 +3592,7 @@ add_opt(Name, Val, Opts, As) ->
     case lists:member(Name, As) of
 	true ->
             %% ?DBG(['is sockopt_val']),
-	    case prim_inet:is_sockopt_val(Name, Val) of
+	    case is_valid_opt(Name, Val) of
 		true when Name =:= raw ->
 		    {ok, [{Name,Val} | Opts]};
 		true ->
@@ -3605,6 +3605,9 @@ add_opt(Name, Val, Opts, As) ->
 	false ->
             {error,badarg}
     end.
+
+is_valid_opt(packet, {Fun, _}) when is_function(Fun, 2) -> true;
+is_valid_opt(Name, Val) -> prim_inet:is_sockopt_val(Name, Val).
 
 
 %% Passthrough all unknown - catch type errors later

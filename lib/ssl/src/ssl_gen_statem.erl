@@ -1512,10 +1512,24 @@ read_application_data_bin(State, Front, BufferSize, Rear, SocketOpts, RecvFrom, 
 read_application_data_bin(State, Front0, BufferSize0, Rear0, SocketOpts0, RecvFrom, BytesToRead, Bin0) ->
     %% Decode one packet from a binary
     case get_data(SocketOpts0, BytesToRead, Bin0) of
+        {ok, Tag, Decoded, Rest, NewState} -> % Custom decoder with state
+            Bin = iolist_to_binary(Rest),
+            BufferSize = BufferSize0 - (byte_size(Bin0) - byte_size(Bin)),
+            {Fun, _} = SocketOpts0#socket_options.packet,
+            SocketOpts1 = SocketOpts0#socket_options{packet = {Fun, NewState}},
+            read_application_custom_data_deliver(
+              State, [Bin|Front0], BufferSize, Rear0, SocketOpts1, RecvFrom, Tag, Decoded);
 	{ok, Data, Bin} -> % Send data
             BufferSize = BufferSize0 - (byte_size(Bin0) - byte_size(Bin)),
             read_application_data_deliver(
               State, [Bin|Front0], BufferSize, Rear0, SocketOpts0, RecvFrom, Data);
+        {more, _N, NewState} -> % Custom decoder needs more, update state
+            {Fun, _} = SocketOpts0#socket_options.packet,
+            SocketOpts1 = SocketOpts0#socket_options{packet = {Fun, NewState}},
+            {no_record, State#state{socket_options = SocketOpts1,
+                                    recv = State#state.recv#recv{from = RecvFrom,
+                                                                 bytes_to_read = BytesToRead},
+                                    user_data_buffer = {[Bin0|Front0],BufferSize0,Rear0}}};
         {more, undefined} ->
             %% We need more data, do not know how much
             if
@@ -1586,6 +1600,27 @@ read_application_data_deliver(State, Front, BufferSize, Rear, SocketOpts0, RecvF
             end
     end.
 
+read_application_custom_data_deliver(State, Front, BufferSize, Rear, SocketOpts0, RecvFrom, Tag, Data) ->
+    #state{
+       static_env = #static_env{user_socket = UserSocket},
+       connection_env = #connection_env{user_application = {_Mon, Pid}}} = State,
+    SocketOpts = deliver_custom_app_data(UserSocket, SocketOpts0, Tag, Data, Pid, RecvFrom),
+    if
+        SocketOpts#socket_options.active =:= false ->
+            {no_record,
+             State#state{
+               user_data_buffer = {Front,BufferSize,Rear},
+               recv = State#state.recv#recv{from = undefined, bytes_to_read = undefined},
+               socket_options = SocketOpts
+              }};
+        true ->
+            case (State#state.handshake_env)#handshake_env.early_data_accepted of
+                false ->
+                    read_application_data(State, Front, BufferSize, Rear, SocketOpts, undefined, undefined);
+                true ->
+                    read_application_data(State, Front, BufferSize, Rear, SocketOpts, RecvFrom, undefined)
+            end
+    end.
 
 read_application_dist_data(DHandle, [Bin|Front], BufferSize, Rear) ->
     read_application_dist_data(DHandle, Front, BufferSize, Rear, Bin);
@@ -1739,6 +1774,9 @@ get_data(#socket_options{active=Active, packet=Raw}, BytesToRead, Bin)
 	    %% Passive Mode not enough data
             {more, BytesToRead}
     end;
+get_data(#socket_options{packet={Fun, State}}, _, Bin)
+  when is_function(Fun, 2) ->
+    Fun(Bin, State);
 get_data(#socket_options{packet=Type, packet_size=Size}, _, Bin) ->
     PacketOpts = [{packet_size, Size}],
     decode_packet(Type, Bin, PacketOpts).
@@ -1787,6 +1825,26 @@ deliver_app_data(UserSocket, #socket_options{active=Active, packet=Type} = SOpts
 	_ ->
 	    SO
     end.
+
+deliver_custom_app_data(UserSocket, #socket_options{active=Active} = SOpts, Tag, Data, Pid, From) ->
+    send_or_reply(Active, Pid, From,
+                  format_custom_reply(UserSocket, SOpts, Tag, Data)),
+    case Active of
+        once ->
+            SOpts#socket_options{active=false};
+        1 ->
+            send_user(Pid, {ssl_passive, UserSocket}),
+            SOpts#socket_options{active=false};
+        N when is_integer(N) ->
+            SOpts#socket_options{active=N - 1};
+        _ ->
+            SOpts
+    end.
+
+format_custom_reply(_UserSocket, #socket_options{active = false}, _Tag, Data) ->
+    {ok, Data};
+format_custom_reply(UserSocket, #socket_options{active = _}, Tag, Data) ->
+    {Tag, UserSocket, Data}.
 
 format_reply(_UserSocket, #socket_options{active = false, mode = Mode, packet = Packet,
                                           header = Header}, Data) ->
@@ -2079,6 +2137,11 @@ set_socket_opts(ConnectionCb, Transport, Socket, Tab, [{mode, Mode}| Opts], Sock
 		    SockOpts#socket_options{mode = Mode}, Other);
 set_socket_opts(_, _, _, _Tab, [{mode, _} = Opt| _], SockOpts, _) ->
     {{error, {options, {socket_options, Opt}}}, SockOpts};
+set_socket_opts(tls_gen_connection, Transport, Socket, Tab, [{packet, {Fun, _} = Packet}| Opts], SockOpts, Other)
+  when is_function(Fun, 2) ->
+    true = ets:insert(Tab, {{socket_options, packet}, Packet}),
+    set_socket_opts(tls_gen_connection, Transport, Socket, Tab, Opts,
+		    SockOpts#socket_options{packet = Packet}, Other);
 set_socket_opts(tls_gen_connection, Transport, Socket, Tab, [{packet, Packet}| Opts], SockOpts, Other)
   when Packet == raw;
        Packet == 0;
