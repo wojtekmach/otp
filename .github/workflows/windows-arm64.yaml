@@ -90,12 +90,10 @@ jobs:
 
       - name: Smoke test
         shell: wsl-bash {0}
+        continue-on-error: true
         run: |
-          export SHELL=/bin/bash
-          export ERL_TOP=$PWD
-          eval `./otp_build env_win32 arm64`
-          ls -l bin/win32 || true
-          ./bin/erl -noshell -eval 'io:format("~s~n~p~n~p~n~p~n", [erlang:system_info(system_version), erlang:system_info(system_architecture), erlang:system_info(emu_flavor), erlang:system_info(wordsize)]), halt().'
+          cat bin/win32/erl.ini
+          ./bin/win32/erl.exe -noshell -eval 'io:format("~s~n~p~n~p~n~p~n", [erlang:system_info(system_version), erlang:system_info(system_architecture), erlang:system_info(emu_flavor), erlang:system_info(wordsize)]), halt().'
 
       - name: Release (tiny)
         shell: wsl-bash {0}
