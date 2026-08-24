@@ -77,7 +77,7 @@ jobs:
           ./otp_build configure
           echo "--- CONF_INFO / SKIP ---"
           cat erts/CONF_INFO lib/*/CONF_INFO lib/*/SKIP lib/SKIP-APPLICATIONS 2>/dev/null || true
-          grep -E '^(CONFIG_SUBTYPE|JIT_ENABLED|JIT_ARCH|FLAVOR|ARCH|TARGET)\b' erts/aarch64-pc-windows/Makefile 2>/dev/null || grep -rn -E '^(JIT_ENABLED|JIT_ARCH)' erts/*/Makefile | head
+          grep -rn -E '^(JIT_ENABLED|JIT_ARCH)' erts/*/Makefile || true
 
       - name: Build Erlang/OTP (tiny)
         shell: wsl-bash {0}
