@@ -33,7 +33,9 @@ COMMON_CFLAGS="-nologo -D__WIN32__ -DWIN32 -DWINDOWS -D_WIN32 -DNT -D_CRT_SECURE
 
 if [ "$CONFIG_SUBTYPE" = "arm64" -o "$CONFIG_SUBTYPE" = "x64_arm64" ]; then
     MACHINE="ARM64"
-    COMMON_CFLAGS="${COMMON_CFLAGS} -D__aarch64__"
+    # NO_PREFETCH: the vendored zstd uses GCC inline asm for prefetching
+    # when __aarch64__ is defined, which MSVC cannot compile.
+    COMMON_CFLAGS="${COMMON_CFLAGS} -D__aarch64__ -DNO_PREFETCH"
 elif [ "$CONFIG_SUBTYPE" = "win64" ]; then
     MACHINE="x64"
 else

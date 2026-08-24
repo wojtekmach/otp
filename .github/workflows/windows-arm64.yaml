@@ -9,110 +9,109 @@ on:
 permissions:
   contents: read
 
+env:
+  UBUNTU_ROOTFS_URL: https://cloud-images.ubuntu.com/wsl/releases/noble/current/ubuntu-noble-wsl-arm64-wsl.rootfs.tar.gz
+
 jobs:
-  probe:
-    name: Probe windows-11-arm runner
+  build:
+    name: Build Erlang/OTP (Windows arm64, tiny)
     runs-on: windows-11-arm
+    timeout-minutes: 240
     steps:
-      - name: System info
+      - name: Configure git
         shell: pwsh
-        continue-on-error: true
-        run: |
-          Write-Host "PROCESSOR_ARCHITECTURE=$env:PROCESSOR_ARCHITECTURE"
-          Write-Host "ImageOS=$env:ImageOS ImageVersion=$env:ImageVersion"
-          systeminfo | Select-String -Pattern 'Hyper-V','Virtualization','OS Name','OS Version','System Type'
-          Get-ComputerInfo | Select-Object CsSystemType, HyperVRequirementVirtualizationFirmwareEnabled, HyperVRequirementVMMonitorModeExtensions, HyperVisorPresent | Format-List
-          Get-WindowsOptionalFeature -Online | Where-Object { $_.FeatureName -match 'Linux|VirtualMachinePlatform|Hyper' } | Format-Table FeatureName, State
+        run: git config --global core.autocrlf false
 
-      - name: WSL status
-        shell: pwsh
-        continue-on-error: true
-        run: |
-          Get-Command wsl -ErrorAction SilentlyContinue | Format-List Source
-          wsl --status
-          wsl --version
-          wsl --list --verbose
-          wsl --list --online
-
-      - name: Visual Studio / MSVC arm64 toolchain
-        shell: cmd
-        continue-on-error: true
-        run: |
-          SET VSWHERE="%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
-          %VSWHERE% -latest -property installationPath
-          %VSWHERE% -latest -property catalog_productDisplayVersion
-          FOR /F "delims=" %%P IN ('%VSWHERE% -latest -property installationPath') DO SET "VSPATH=%%P"
-          dir /s /b "%VSPATH%\VC\Tools\MSVC\*\bin\*\arm64\cl.exe"
-          dir /b "%VSPATH%\VC\Tools\MSVC"
-          call "%VSPATH%\VC\Auxiliary\Build\vcvarsall.bat" arm64
-          where cl.exe
-          where rc.exe
-          where link.exe
-          cl.exe 2>&1 | findstr /i "version"
-          echo INCLUDE=%INCLUDE%
-          echo LIB=%LIB%
-          echo VCToolsRedistDir=%VCToolsRedistDir%
-
-      - name: Unix-ish tooling on the image
-        shell: pwsh
-        continue-on-error: true
-        run: |
-          foreach ($t in 'bash','sh','make','nmake','perl','autoconf','choco','nuget','makensis','openssl','git','tar','python','cmake','ninja','clang') {
-            $c = Get-Command $t -ErrorAction SilentlyContinue
-            if ($c) { Write-Host ("{0,-10} {1}" -f $t, $c.Source) } else { Write-Host ("{0,-10} MISSING" -f $t) }
-          }
-          Get-ChildItem -ErrorAction SilentlyContinue 'C:\msys64', 'C:\Program Files\Git\usr\bin' | Select-Object -First 5
-          Get-ChildItem 'C:\Program Files\OpenSSL*' -ErrorAction SilentlyContinue
-          Get-ChildItem 'C:\Program Files (x86)\NSIS' -ErrorAction SilentlyContinue | Select-Object -First 5
-          bash --version
-          perl --version
-
-  probe-wsl1:
-    name: Probe WSL1 on windows-11-arm
-    runs-on: windows-11-arm
-    steps:
-      - uses: Vampire/setup-wsl@6a8db447be7ed35f2f499c02c6e60ff77ef11278 # ratchet:Vampire/setup-wsl@v6.0.0
-        continue-on-error: true
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6.0.2
         with:
-          distribution: Ubuntu-24.04
-          wsl-version: 1
-      - name: Test WSL
+          persist-credentials: false
+          fetch-depth: 1
+
+      # The windows-11-arm runner has no nested virtualization, so WSL2 does
+      # not work (0x80370102). WSL1 does, but the Ubuntu appx bundles that
+      # Vampire/setup-wsl installs are x64, so we import an arm64 rootfs
+      # ourselves.
+      - name: Install WSL1 + Ubuntu arm64
         shell: pwsh
-        continue-on-error: true
         run: |
+          Start-Process wsl -ArgumentList '--install','--no-distribution'
+          $ok = $false
+          for ($i = 0; $i -lt 60; $i++) {
+            wsl --set-default-version 1 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) { $ok = $true; break }
+            Start-Sleep -Seconds 5
+          }
+          if (-not $ok) { wsl --status; throw "WSL did not become available" }
+          curl.exe -sSL -o "$env:RUNNER_TEMP\ubuntu-arm64.tar.gz" "$env:UBUNTU_ROOTFS_URL"
+          New-Item -ItemType Directory -Force -Path C:\wsl | Out-Null
+          wsl --import Ubuntu C:\wsl\Ubuntu "$env:RUNNER_TEMP\ubuntu-arm64.tar.gz" --version 1
+          wsl --set-default Ubuntu
           wsl --list --verbose
           wsl -- uname -a
-          wsl -- cat /etc/os-release
-          wsl -- sh -c 'apt update && apt install -y make autoconf perl && which make autoconf perl && cmd.exe /c ver'
+          # Shell wrapper so that later steps can use `shell: wsl-bash {0}`
+          Set-Content -Path C:\wsl\wsl-bash.bat -Value '@echo off' -Encoding ascii
+          Add-Content -Path C:\wsl\wsl-bash.bat -Value 'wsl.exe --distribution Ubuntu --user root -- bash --noprofile --norc -eo pipefail "$(wslpath ''%~1'')"' -Encoding ascii
+          Get-Content C:\wsl\wsl-bash.bat
+          Add-Content -Path $env:GITHUB_PATH -Value 'C:\wsl'
 
-  probe-msys2:
-    name: Probe MSYS2 on windows-11-arm
-    runs-on: windows-11-arm
-    steps:
-      - uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # ratchet:msys2/setup-msys2@v2.32.0
-        continue-on-error: true
-        with:
-          msystem: MSYS
-          update: false
-          install: autoconf make perl
-      - name: Test MSYS2
-        shell: msys2 {0}
-        continue-on-error: true
+      - name: Install WSL build dependencies
+        shell: wsl-bash {0}
         run: |
-          uname -a
-          bash --version | head -1
-          which make autoconf perl gcc cl.exe || true
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -q
+          apt-get install -y -q make autoconf perl
+          uname -m
           make --version | head -1
           autoconf --version | head -1
-          cmd //c ver
-          cygpath -m /
-      - name: Test MSYS2 + MSVC arm64
-        shell: cmd
-        continue-on-error: true
+
+      - name: Configure Erlang/OTP
+        shell: wsl-bash {0}
         run: |
-          SET VSWHERE="%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
-          FOR /F "delims=" %%P IN ('%VSWHERE% -latest -property installationPath') DO SET "VSPATH=%%P"
-          call "%VSPATH%\VC\Auxiliary\Build\vcvarsall.bat" arm64
-          set MSYSTEM=MSYS
-          set CHERE_INVOKING=1
-          C:\msys64\usr\bin\bash.exe -lc "which cl.exe; cl.exe 2>&1 | head -1; echo INCLUDE=$INCLUDE; uname -a"
+          export SHELL=/bin/bash
+          export ERL_TOP=$PWD
+          export ERTS_SKIP_DEPEND=true
+          export MAKEFLAGS=-j$(($(nproc) + 2))
+          eval `./otp_build env_win32 arm64`
+          ./otp_build autoconf
+          ./otp_build configure
+          echo "--- CONF_INFO / SKIP ---"
+          cat erts/CONF_INFO lib/*/CONF_INFO lib/*/SKIP lib/SKIP-APPLICATIONS 2>/dev/null || true
+          grep -E '^(CONFIG_SUBTYPE|JIT_ENABLED|JIT_ARCH|FLAVOR|ARCH|TARGET)\b' erts/aarch64-pc-windows/Makefile 2>/dev/null || grep -rn -E '^(JIT_ENABLED|JIT_ARCH)' erts/*/Makefile | head
+
+      - name: Build Erlang/OTP (tiny)
+        shell: wsl-bash {0}
+        run: |
+          export SHELL=/bin/bash
+          export ERL_TOP=$PWD
+          export ERTS_SKIP_DEPEND=true
+          export ERLC_USE_SERVER=true
+          export MAKEFLAGS=-j$(($(nproc) + 2))
+          eval `./otp_build env_win32 arm64`
+          ./otp_build boot -t
+
+      - name: Smoke test
+        shell: wsl-bash {0}
+        run: |
+          export SHELL=/bin/bash
+          export ERL_TOP=$PWD
+          eval `./otp_build env_win32 arm64`
+          ls -l bin/win32 || true
+          ./bin/erl -noshell -eval 'io:format("~s~n~p~n~p~n~p~n", [erlang:system_info(system_version), erlang:system_info(system_architecture), erlang:system_info(emu_flavor), erlang:system_info(wordsize)]), halt().'
+
+      - name: Release (tiny)
+        shell: wsl-bash {0}
+        run: |
+          export SHELL=/bin/bash
+          export ERL_TOP=$PWD
+          export MAKEFLAGS=-j$(($(nproc) + 2))
+          eval `./otp_build env_win32 arm64`
+          ./otp_build release -t
+          ls release/win32
+
+      - name: Upload release
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # ratchet:actions/upload-artifact@v6.0.0
+        if: always()
+        with:
+          name: otp_win_arm64_tiny
+          path: release/win32
+          if-no-files-found: ignore
