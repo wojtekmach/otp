@@ -1,0 +1,84 @@
+name: Build Erlang/OTP (Windows arm64)
+
+on:
+  push:
+    branches:
+      - wm-win-arm64
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Probe windows-11-arm runner
+    runs-on: windows-11-arm
+    steps:
+      - name: System info
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          Write-Host "PROCESSOR_ARCHITECTURE=$env:PROCESSOR_ARCHITECTURE"
+          Write-Host "ImageOS=$env:ImageOS ImageVersion=$env:ImageVersion"
+          systeminfo | Select-String -Pattern 'Hyper-V','Virtualization','OS Name','OS Version','System Type'
+          Get-ComputerInfo | Select-Object CsSystemType, HyperVRequirementVirtualizationFirmwareEnabled, HyperVRequirementVMMonitorModeExtensions, HyperVisorPresent | Format-List
+          Get-WindowsOptionalFeature -Online | Where-Object { $_.FeatureName -match 'Linux|VirtualMachinePlatform|Hyper' } | Format-Table FeatureName, State
+
+      - name: WSL status
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          Get-Command wsl -ErrorAction SilentlyContinue | Format-List Source
+          wsl --status
+          wsl --version
+          wsl --list --verbose
+          wsl --list --online
+
+      - name: Visual Studio / MSVC arm64 toolchain
+        shell: cmd
+        continue-on-error: true
+        run: |
+          SET VSWHERE="%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+          %VSWHERE% -latest -property installationPath
+          %VSWHERE% -latest -property catalog_productDisplayVersion
+          FOR /F "delims=" %%P IN ('%VSWHERE% -latest -property installationPath') DO SET "VSPATH=%%P"
+          dir /s /b "%VSPATH%\VC\Tools\MSVC\*\bin\*\arm64\cl.exe"
+          dir /b "%VSPATH%\VC\Tools\MSVC"
+          call "%VSPATH%\VC\Auxiliary\Build\vcvarsall.bat" arm64
+          where cl.exe
+          where rc.exe
+          where link.exe
+          cl.exe 2>&1 | findstr /i "version"
+          echo INCLUDE=%INCLUDE%
+          echo LIB=%LIB%
+          echo VCToolsRedistDir=%VCToolsRedistDir%
+
+      - name: Unix-ish tooling on the image
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          foreach ($t in 'bash','sh','make','nmake','perl','autoconf','choco','nuget','makensis','openssl','git','tar','python','cmake','ninja','clang') {
+            $c = Get-Command $t -ErrorAction SilentlyContinue
+            if ($c) { Write-Host ("{0,-10} {1}" -f $t, $c.Source) } else { Write-Host ("{0,-10} MISSING" -f $t) }
+          }
+          Get-ChildItem -ErrorAction SilentlyContinue 'C:\msys64', 'C:\Program Files\Git\usr\bin' | Select-Object -First 5
+          Get-ChildItem 'C:\Program Files\OpenSSL*' -ErrorAction SilentlyContinue
+          Get-ChildItem 'C:\Program Files (x86)\NSIS' -ErrorAction SilentlyContinue | Select-Object -First 5
+          bash --version
+          perl --version
+
+  probe-wsl:
+    name: Probe Vampire/setup-wsl on windows-11-arm
+    runs-on: windows-11-arm
+    steps:
+      - uses: Vampire/setup-wsl@6a8db447be7ed35f2f499c02c6e60ff77ef11278 # ratchet:Vampire/setup-wsl@v6.0.0
+        continue-on-error: true
+        with:
+          distribution: Ubuntu-24.04
+      - name: Test WSL
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          wsl --list --verbose
+          wsl -- uname -a
+          wsl -- cat /etc/os-release
