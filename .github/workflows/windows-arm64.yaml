@@ -70,7 +70,6 @@ jobs:
         run: |
           export SHELL=/bin/bash
           export ERL_TOP=$PWD
-          export ERTS_SKIP_DEPEND=true
           export MAKEFLAGS=-j$(($(nproc) + 2))
           eval `./otp_build env_win32 arm64`
           ./otp_build autoconf
@@ -84,7 +83,6 @@ jobs:
         run: |
           export SHELL=/bin/bash
           export ERL_TOP=$PWD
-          export ERTS_SKIP_DEPEND=true
           export ERLC_USE_SERVER=true
           export MAKEFLAGS=-j$(($(nproc) + 2))
           eval `./otp_build env_win32 arm64`
