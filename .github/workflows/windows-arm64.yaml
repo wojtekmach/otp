@@ -163,6 +163,7 @@ jobs:
           eval `./otp_build env_win32 arm64`
           ./otp_build release -a
           cp /mnt/c/opt/local64/pgm/wxWidgets-${WXWIDGETS_VERSION}/3rdparty/webview2/build/native/arm64/WebView2Loader.dll $ERL_TOP/release/win32/erts-*/bin/
+          ls "$VCToolsRedistDir" || true
           ./otp_build installer_win32
           ls -l release/win32
         env:
@@ -174,4 +175,16 @@ jobs:
         with:
           name: otp_win_arm64_installer
           path: release/win32/otp*.exe
+          if-no-files-found: ignore
+
+      # The plain release tree (no installer needed: unzip and run bin\erl.exe
+      # after running Install.exe -s in the top directory).
+      - name: Upload release tree
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # ratchet:actions/upload-artifact@v6.0.0
+        if: always()
+        with:
+          name: otp_win_arm64_release
+          path: |
+            release/win32
+            !release/win32/otp*.exe
           if-no-files-found: ignore
