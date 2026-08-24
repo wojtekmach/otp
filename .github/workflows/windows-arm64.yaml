@@ -162,7 +162,7 @@ jobs:
           export PATH="/mnt/c/Program Files (x86)/NSIS/bin":$PATH
           eval `./otp_build env_win32 arm64`
           ./otp_build release -a
-          cp /mnt/c/opt/local64/pgm/wxWidgets-${WXWIDGETS_VERSION}/3rdparty/webview2/runtimes/win-arm64/native/WebView2Loader.dll $ERL_TOP/release/win32/erts-*/bin/
+          cp /mnt/c/opt/local64/pgm/wxWidgets-${WXWIDGETS_VERSION}/3rdparty/webview2/build/native/arm64/WebView2Loader.dll $ERL_TOP/release/win32/erts-*/bin/
           ./otp_build installer_win32
           ls -l release/win32
         env:
