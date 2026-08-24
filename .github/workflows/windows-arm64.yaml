@@ -50,7 +50,8 @@ jobs:
           wsl -- uname -a
           # Shell wrapper so that later steps can use `shell: wsl-bash {0}`
           Set-Content -Path C:\wsl\wsl-bash.bat -Value '@echo off' -Encoding ascii
-          Add-Content -Path C:\wsl\wsl-bash.bat -Value 'wsl.exe --distribution Ubuntu --user root -- bash --noprofile --norc -eo pipefail "$(wslpath ''%~1'')"' -Encoding ascii
+          # The runner writes the step script with CRLF line endings, so strip the CRs before running it.
+          Add-Content -Path C:\wsl\wsl-bash.bat -Value 'wsl.exe --distribution Ubuntu --user root --exec bash -c "f=$(wslpath ''%~1''); tr -d ''\r'' < $f > $f.lf; exec bash --noprofile --norc -eo pipefail $f.lf"' -Encoding ascii
           Get-Content C:\wsl\wsl-bash.bat
           Add-Content -Path $env:GITHUB_PATH -Value 'C:\wsl'
 
