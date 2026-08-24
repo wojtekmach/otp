@@ -67,14 +67,15 @@ jobs:
           bash --version
           perl --version
 
-  probe-wsl:
-    name: Probe Vampire/setup-wsl on windows-11-arm
+  probe-wsl1:
+    name: Probe WSL1 on windows-11-arm
     runs-on: windows-11-arm
     steps:
       - uses: Vampire/setup-wsl@6a8db447be7ed35f2f499c02c6e60ff77ef11278 # ratchet:Vampire/setup-wsl@v6.0.0
         continue-on-error: true
         with:
           distribution: Ubuntu-24.04
+          wsl-version: 1
       - name: Test WSL
         shell: pwsh
         continue-on-error: true
@@ -82,3 +83,36 @@ jobs:
           wsl --list --verbose
           wsl -- uname -a
           wsl -- cat /etc/os-release
+          wsl -- sh -c 'apt update && apt install -y make autoconf perl && which make autoconf perl && cmd.exe /c ver'
+
+  probe-msys2:
+    name: Probe MSYS2 on windows-11-arm
+    runs-on: windows-11-arm
+    steps:
+      - uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # ratchet:msys2/setup-msys2@v2.32.0
+        continue-on-error: true
+        with:
+          msystem: MSYS
+          update: false
+          install: autoconf make perl
+      - name: Test MSYS2
+        shell: msys2 {0}
+        continue-on-error: true
+        run: |
+          uname -a
+          bash --version | head -1
+          which make autoconf perl gcc cl.exe || true
+          make --version | head -1
+          autoconf --version | head -1
+          cmd //c ver
+          cygpath -m /
+      - name: Test MSYS2 + MSVC arm64
+        shell: cmd
+        continue-on-error: true
+        run: |
+          SET VSWHERE="%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+          FOR /F "delims=" %%P IN ('%VSWHERE% -latest -property installationPath') DO SET "VSPATH=%%P"
+          call "%VSPATH%\VC\Auxiliary\Build\vcvarsall.bat" arm64
+          set MSYSTEM=MSYS
+          set CHERE_INVOKING=1
+          C:\msys64\usr\bin\bash.exe -lc "which cl.exe; cl.exe 2>&1 | head -1; echo INCLUDE=$INCLUDE; uname -a"
