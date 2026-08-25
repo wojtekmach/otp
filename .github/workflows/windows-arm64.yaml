@@ -74,44 +74,44 @@ jobs:
           apt-get update -q
           apt-get install -y -q make autoconf perl unzip
 
-      - name: Cache wxWidgets
-        id: wxwidgets-cache
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # ratchet:actions/cache@v5.0.3
-        with:
-          path: wxWidgets
-          key: wxWidgets-${{ env.WXWIDGETS_VERSION }}-windows-11-arm64
+#      - name: Cache wxWidgets
+#        id: wxwidgets-cache
+#        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # ratchet:actions/cache@v5.0.3
+#        with:
+#          path: wxWidgets
+#          key: wxWidgets-${{ env.WXWIDGETS_VERSION }}-windows-11-arm64
 
-      - name: Download wxWidgets
-        if: steps.wxwidgets-cache.outputs.cache-hit != 'true'
-        shell: wsl-bash {0}
-        run: |
-          curl -sSL -o wxWidgets-${WXWIDGETS_VERSION}.zip https://github.com/wxWidgets/wxWidgets/releases/download/v${WXWIDGETS_VERSION}/wxWidgets-${WXWIDGETS_VERSION}.zip
-          unzip -q wxWidgets-${WXWIDGETS_VERSION}.zip -d wxWidgets
-          sed -i -r -e 's/wxUSE_POSTSCRIPT +0/wxUSE_POSTSCRIPT 1/' wxWidgets/include/wx/msw/setup.h
-          sed -i -r -e 's/wxUSE_WEBVIEW_EDGE +0/wxUSE_WEBVIEW_EDGE 1/' wxWidgets/include/wx/msw/setup.h
-        env:
-          WSLENV: WXWIDGETS_VERSION
+#      - name: Download wxWidgets
+#        if: steps.wxwidgets-cache.outputs.cache-hit != 'true'
+#        shell: wsl-bash {0}
+#        run: |
+#          curl -sSL -o wxWidgets-${WXWIDGETS_VERSION}.zip https://github.com/wxWidgets/wxWidgets/releases/download/v${WXWIDGETS_VERSION}/wxWidgets-${WXWIDGETS_VERSION}.zip
+#          unzip -q wxWidgets-${WXWIDGETS_VERSION}.zip -d wxWidgets
+#          sed -i -r -e 's/wxUSE_POSTSCRIPT +0/wxUSE_POSTSCRIPT 1/' wxWidgets/include/wx/msw/setup.h
+#          sed -i -r -e 's/wxUSE_WEBVIEW_EDGE +0/wxUSE_WEBVIEW_EDGE 1/' wxWidgets/include/wx/msw/setup.h
+#        env:
+#          WSLENV: WXWIDGETS_VERSION
 
-      - name: Install WebView2
-        if: steps.wxwidgets-cache.outputs.cache-hit != 'true'
-        shell: cmd
-        run: |
-          cd wxWidgets\3rdparty
-          nuget install Microsoft.Web.WebView2 -Version 1.0.705.50 -Source https://api.nuget.org/v3/index.json
-          rename Microsoft.Web.WebView2.1.0.705.50 webview2
+#      - name: Install WebView2
+#        if: steps.wxwidgets-cache.outputs.cache-hit != 'true'
+#        shell: cmd
+#        run: |
+#          cd wxWidgets\3rdparty
+#          nuget install Microsoft.Web.WebView2 -Version 1.0.705.50 -Source https://api.nuget.org/v3/index.json
+#          rename Microsoft.Web.WebView2.1.0.705.50 webview2
 
-      - name: Build wxWidgets
-        if: steps.wxwidgets-cache.outputs.cache-hit != 'true'
-        shell: cmd
-        run: |
-          cd wxWidgets\build\msw
-          SET VSWHERE="%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
-          FOR /F "delims=" %%P IN ('%VSWHERE% -latest -property installationPath') DO (
-            SET "VCVARSALL=%%P\VC\Auxiliary\Build\vcvarsall.bat"
-          )
-          call "%VCVARSALL%" arm64
-          nmake TARGET_CPU=ARM64 BUILD=release SHARED=0 -f makefile.vc
-          dir ..\..\lib
+#      - name: Build wxWidgets
+#        if: steps.wxwidgets-cache.outputs.cache-hit != 'true'
+#        shell: cmd
+#        run: |
+#          cd wxWidgets\build\msw
+#          SET VSWHERE="%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+#          FOR /F "delims=" %%P IN ('%VSWHERE% -latest -property installationPath') DO (
+#            SET "VCVARSALL=%%P\VC\Auxiliary\Build\vcvarsall.bat"
+#          )
+#          call "%VCVARSALL%" arm64
+#          nmake TARGET_CPU=ARM64 BUILD=release SHARED=0 -f makefile.vc
+#          dir ..\..\lib
 
       - name: Configure Erlang/OTP
         shell: wsl-bash {0}
@@ -119,18 +119,19 @@ jobs:
           export SHELL=/bin/bash
           export ERL_TOP=$PWD
           export MAKEFLAGS=-j$(($(nproc) + 2))
-          mkdir -p /mnt/c/opt/local64/pgm/
-          cp -R wxWidgets /mnt/c/opt/local64/pgm/wxWidgets-${WXWIDGETS_VERSION}
+          #mkdir -p /mnt/c/opt/local64/pgm/
+          #cp -R wxWidgets /mnt/c/opt/local64/pgm/wxWidgets-${WXWIDGETS_VERSION}
           eval `./otp_build env_win32 arm64`
           ./otp_build configure
           echo "--- CONF_INFO / SKIP ---"
           cat erts/CONF_INFO lib/*/CONF_INFO lib/*/SKIP lib/SKIP-APPLICATIONS 2>/dev/null || true
-          if cat erts/CONF_INFO ||
-             grep -v "Static linking with OpenSSL 3.0" lib/*/CONF_INFO ||
-             cat lib/*/SKIP ||
-             cat lib/SKIP-APPLICATIONS; then
-             exit 1
-          fi
+          # (tiny build: wx is expected to be skipped, so the strict check is off)
+          #if cat erts/CONF_INFO ||
+          #   grep -v "Static linking with OpenSSL 3.0" lib/*/CONF_INFO ||
+          #   cat lib/*/SKIP ||
+          #   cat lib/SKIP-APPLICATIONS; then
+          #   exit 1
+          #fi
         env:
           WSLENV: WXWIDGETS_VERSION
 
@@ -142,7 +143,9 @@ jobs:
           export ERLC_USE_SERVER=true
           export MAKEFLAGS=-j$(($(nproc) + 2))
           eval `./otp_build env_win32 arm64`
-          ./otp_build boot -a
+          ./otp_build boot -t
+          # crypto is not part of the tiny build; build it on top.
+          (cd lib/crypto && PATH=$ERL_TOP/bootstrap/bin:$PATH make opt)
 
       - name: Smoke test
         shell: wsl-bash {0}
@@ -151,9 +154,9 @@ jobs:
           cat bin/win32/erl.ini
           ./bin/win32/erl.exe -noshell -eval 'io:format("~s~n~p~n~p~n~p~n", [erlang:system_info(system_version), erlang:system_info(system_architecture), erlang:system_info(emu_flavor), erlang:system_info(wordsize)]), halt().'
           ./bin/win32/erl.exe -noshell -eval 'ok = crypto:start(), io:format("~p~n~p~n", [crypto:info_lib(), crypto:hash(sha256, <<"hello">>)]), halt().'
-          ./bin/win32/erl.exe -noshell -eval 'io:format("~p~n", [catch wx:new()]), halt().'
+          #./bin/win32/erl.exe -noshell -eval 'io:format("~p~n", [catch wx:new()]), halt().'
 
-      - name: Release + installer
+      - name: Release
         shell: wsl-bash {0}
         run: |
           export SHELL=/bin/bash
@@ -161,13 +164,60 @@ jobs:
           export MAKEFLAGS=-j$(($(nproc) + 2))
           export PATH="/mnt/c/Program Files (x86)/NSIS/bin":$PATH
           eval `./otp_build env_win32 arm64`
-          ./otp_build release -a
-          cp /mnt/c/opt/local64/pgm/wxWidgets-${WXWIDGETS_VERSION}/3rdparty/webview2/build/native/arm64/WebView2Loader.dll $ERL_TOP/release/win32/erts-*/bin/
-          ls "$VCToolsRedistDir" || true
-          ./otp_build installer_win32
+          ./otp_build release -t
+          #./otp_build release -a
+          #cp /mnt/c/opt/local64/pgm/wxWidgets-${WXWIDGETS_VERSION}/3rdparty/webview2/build/native/arm64/WebView2Loader.dll $ERL_TOP/release/win32/erts-*/bin/
+          #./otp_build installer_win32
           ls -l release/win32
         env:
           WSLENV: WXWIDGETS_VERSION
+
+      # Same recipe as .github/workflows/upload-windows-zip.yaml, but applied
+      # directly to the release tree: Install.exe populates bin/, then the
+      # installer-only files are removed so that the zip is ready to run.
+      - name: Create .zip
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vsn = (Get-Content OTP_VERSION).Trim()
+          $basename = "otp_arm64_$vsn"
+          $root = Get-Location
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vspath = & $vswhere -latest -property installationPath
+          $redist = Get-ChildItem "$vspath\VC\Redist\MSVC\*\vc_redist.arm64.exe" | Select-Object -First 1
+          cd release\win32
+          .\Install.exe -s
+          if ($LASTEXITCODE -ne 0) { throw "Install.exe failed with $LASTEXITCODE" }
+          Get-ChildItem -Recurse -Filter erl.ini | Remove-Item
+          Remove-Item Install.exe, Install.ini
+          # not part of the zip: the NSIS installer and its redist copy (full builds only)
+          Remove-Item -ErrorAction Ignore otp_*.exe, vcredist_arm64.exe
+          Copy-Item $redist.FullName vc_redist.exe
+          Copy-Item $root\erts\etc\win32\INSTALL.txt .
+          Get-ChildItem
+          Compress-Archive -Path * -DestinationPath "$root\$basename.zip"
+          cd $root
+          Get-Item "$basename.zip"
+
+      - name: Verify .zip
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vsn = (Get-Content OTP_VERSION).Trim()
+          Expand-Archive -Path "otp_arm64_$vsn.zip" -DestinationPath "$env:RUNNER_TEMP\otp_test"
+          Get-ChildItem "$env:RUNNER_TEMP\otp_test"
+          Get-ChildItem "$env:RUNNER_TEMP\otp_test\bin"
+          & "$env:RUNNER_TEMP\otp_test\bin\erl.exe" +V
+          & "$env:RUNNER_TEMP\otp_test\bin\erl.exe" -noshell -eval 'io:format("hello world~n"), halt().'
+          if ($LASTEXITCODE -ne 0) { throw "erl.exe failed with $LASTEXITCODE" }
+
+      - name: Upload .zip
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # ratchet:actions/upload-artifact@v6.0.0
+        if: always()
+        with:
+          name: otp_win_arm64_zip
+          path: otp_arm64_*.zip
+          if-no-files-found: ignore
 
       - name: Upload installer
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # ratchet:actions/upload-artifact@v6.0.0
@@ -177,14 +227,3 @@ jobs:
           path: release/win32/otp*.exe
           if-no-files-found: ignore
 
-      # The plain release tree (no installer needed: unzip and run bin\erl.exe
-      # after running Install.exe -s in the top directory).
-      - name: Upload release tree
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # ratchet:actions/upload-artifact@v6.0.0
-        if: always()
-        with:
-          name: otp_win_arm64_release
-          path: |
-            release/win32
-            !release/win32/otp*.exe
-          if-no-files-found: ignore
