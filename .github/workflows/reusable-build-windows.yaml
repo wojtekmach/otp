@@ -42,12 +42,14 @@ jobs:
             runs-on: windows-2025
             wsl_packages: g++-mingw-w64 gcc-mingw-w64 make autoconf unzip
             wx_nmake_args: TARGET_CPU=amd64 DIR_SUFFIX_CPU=
-            artifact: otp_win32_installer
+            installer_artifact: otp_win32_installer
+            zip_artifact: otp_win64_zip
           - arch: arm64
             runs-on: windows-11-arm
             wsl_packages: make unzip wget
             wx_nmake_args: TARGET_CPU=ARM64
-            artifact: otp_win_arm64_installer
+            installer_artifact: otp_win_arm64_installer
+            zip_artifact: otp_win_arm64_zip
     defaults:
       run:
         shell: wsl-bash {0}
@@ -192,9 +194,37 @@ jobs:
           ./otp_build release -a
           cp /mnt/c/opt/local64/pgm/wxWidgets-${{ env.WXWIDGETS_VERSION }}/3rdparty/webview2/build/native/${{ matrix.arch }}/WebView2Loader.dll $ERL_TOP/release/win32/erts-*/bin/
           ./otp_build installer_win32
+          mv release/win32/otp_*.exe ..
+
+      - name: Create .zip
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Get-Location
+          $basename = (Get-Item otp_*.exe).BaseName
+          cd otp\release\win32
+          .\Install.exe -s
+          if ($LASTEXITCODE -ne 0) { throw "Install.exe failed with $LASTEXITCODE" }
+          Get-ChildItem -Recurse -Filter erl.ini | Remove-Item
+          Remove-Item Install.exe, Install.ini
+          Move-Item vcredist_*.exe vc_redist.exe
+          Copy-Item $root\otp\erts\etc\win32\INSTALL.txt .
+          Compress-Archive -Path * -DestinationPath "$root\$basename.zip"
+
+          cd $root
+          Expand-Archive -Path "$basename.zip" -DestinationPath "$env:RUNNER_TEMP\otp_test"
+          & "$env:RUNNER_TEMP\otp_test\bin\erl.exe" +V
+          & "$env:RUNNER_TEMP\otp_test\bin\erl.exe" -noshell -eval 'io:format("hello world~n"), halt().'
+          if ($LASTEXITCODE -ne 0) { throw "erl.exe failed with $LASTEXITCODE" }
 
       - name: Upload installer
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # ratchet:actions/upload-artifact@v6.0.0
         with:
-          name: ${{ matrix.artifact }}
-          path: otp/release/win32/otp*.exe
+          name: ${{ matrix.installer_artifact }}
+          path: otp_*.exe
+
+      - name: Upload .zip
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # ratchet:actions/upload-artifact@v6.0.0
+        with:
+          name: ${{ matrix.zip_artifact }}
+          path: otp_*.zip

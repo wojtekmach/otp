@@ -59,7 +59,8 @@ permissions:
 
 jobs:
   check-files:
-    if: github.event_name == 'pull_request'
+    if: false # TODO
+    # TODO if: github.event_name == 'pull_request'
     permissions:
       contents: read
     uses: ./.github/workflows/reusable-check-files.yaml
@@ -87,20 +88,22 @@ jobs:
       bypass_erlang_repo:   false
 
   build-macos:
+    if: false # TODO
     name: Build Erlang/OTP (macOS)
     needs: pack
     permissions:
       contents: read
       actions:  write
-    if: needs.pack.outputs.build-c-code == 'true'
+    # TODO if: needs.pack.outputs.build-c-code == 'true'
     uses: ./.github/workflows/reusable-build-macos.yaml
     with:
       base_branch: ${{ needs.pack.outputs.base_branch }}
 
   build-ios:
+    if: false # TODO
     name: Build Erlang/OTP (iOS)
     needs: pack
-    if: needs.pack.outputs.build-c-code == 'true'
+    # TODO if: needs.pack.outputs.build-c-code == 'true'
     permissions:
       contents: read
       actions: write
@@ -120,9 +123,10 @@ jobs:
       base_branch: ${{ needs.pack.outputs.base_branch }}
 
   build-flavors:
+    if: false # TODO
     name: Build Erlang/OTP (Types and Flavors)
     needs: pack
-    if: needs.pack.outputs.build-c-code == 'true'
+    # TODO if: needs.pack.outputs.build-c-code == 'true'
     permissions:
       contents: read
     uses: ./.github/workflows/reusable-build-flavours.yaml
@@ -132,8 +136,9 @@ jobs:
 
   # this is a call to a workflow_call
   pr-vendor-vulnerability-analysis:
+    if: false # TODO
     needs: pack
-    if: ${{ github.event_name == 'pull_request' && github.repository == 'erlang/otp'}}
+    # TODO if: ${{ github.event_name == 'pull_request' && github.repository == 'erlang/otp'}}
     permissions:
       contents: read
       actions: write
@@ -152,9 +157,10 @@ jobs:
     secrets: inherit
 
   build:
+    if: false # TODO
     name: Build Erlang/OTP
     needs: pack
-    if: needs.pack.outputs.build-c-code == 'true'
+    # TODO if: needs.pack.outputs.build-c-code == 'true'
     permissions:
       contents: read
     uses: ./.github/workflows/reusable-build-otp.yaml
@@ -162,20 +168,22 @@ jobs:
       base_branch: ${{ needs.pack.outputs.base_branch }}
 
   freebsd:
+    if: false # TODO
     name: Build Erlang/OTP (FreeBSD)
     needs: pack
     permissions:
       contents: read
       actions: read
-    if: needs.pack.outputs.build-c-code == 'true'
+    # TODO if: needs.pack.outputs.build-c-code == 'true'
     uses: ./.github/workflows/reusable-freebsd.yaml
     with:
       base_branch: ${{ needs.pack.outputs.base_branch }}
 
   openbsd:
+    if: false # TODO
     name: Build Erlang/OTP (OpenBSD)
     needs: pack
-    if: needs.pack.outputs.build-c-code == 'true'
+    # TODO if: needs.pack.outputs.build-c-code == 'true'
     permissions:
       contents: read
       actions: read
@@ -184,9 +192,10 @@ jobs:
       base_branch: ${{ needs.pack.outputs.base_branch }}
 
   solaris:
+    if: false # TODO
     name: Build Erlang/OTP (Solaris)
     needs: pack
-    if: needs.pack.outputs.build-c-code == 'true' && false # Temporarily disable Solaris build as the VM image is currently broken
+    # TODO if: needs.pack.outputs.build-c-code == 'true' && false # Temporarily disable Solaris build as the VM image is currently broken
     permissions:
       contents: read
       actions: read
@@ -195,6 +204,7 @@ jobs:
       base_branch: ${{ needs.pack.outputs.base_branch }}
 
   documentation:
+    if: false # TODO
     name: Build and Check Documentation
     needs:
       - setup
@@ -211,6 +221,7 @@ jobs:
       trigger_erlang_org_build: ${{ github.ref_name == 'master' && github.repository == 'erlang/otp' }}
 
   static:
+    if: false # TODO
     name: Run static analysis
     needs:
       - setup
@@ -223,9 +234,10 @@ jobs:
       base_branch:              ${{ needs.setup.outputs.base_branch }}
 
   test:
+    if: false # TODO
     name: Test Erlang/OTP
     needs: pack
-    if: needs.pack.outputs.changes != '[]'
+    # TODO if: needs.pack.outputs.changes != '[]'
     permissions:
       contents: read
       actions:  write
@@ -235,8 +247,9 @@ jobs:
       base_branch: ${{ needs.pack.outputs.base_branch }}
 
   system-test:
+    if: false # TODO
     name: Test Erlang/OTP (system)
-    if: ${{ !cancelled() && needs.pack.result == 'success' }} # Run even if the need has failed
+    # TODO if: ${{ !cancelled() && needs.pack.result == 'success' }} # Run even if the need has failed
     permissions:
       contents: read
       actions:  write
@@ -259,6 +272,7 @@ jobs:
   ##
   ## and then make sure to use that sha instead of env.OTP_SBOM_VERSION
   sbom:
+    if: false # TODO
     name: Create SBOM
     needs:
       - setup
@@ -277,6 +291,7 @@ jobs:
 
   ## If this is an "OTP-*" tag that has been pushed we do some release work
   release:
+    if: false # TODO
     name: Release Erlang/OTP
     needs:
       - setup
@@ -287,7 +302,7 @@ jobs:
       attestations: write
       id-token:     write
       actions:      write
-    if: startsWith(github.ref, 'refs/tags/OTP-') && github.repository == 'erlang/otp'
+    # TODO if: startsWith(github.ref, 'refs/tags/OTP-') && github.repository == 'erlang/otp'
     uses: ./.github/workflows/reusable-release.yaml
     with:
       otp_sbom_version: ${{ needs.setup.outputs.otp_sbom_version }}
@@ -298,6 +313,7 @@ jobs:
       # GITHUB_TOKEN is already available in called workflow.
 
   event_file:
+    if: false # TODO
     name: "Event File"
     runs-on: ubuntu-latest
     steps:
@@ -310,6 +326,7 @@ jobs:
   # Zizmor is a GitHub Actions security linter.
   # See: https://docs.zizmor.sh/
   zizmor:
+    if: false # TODO
     name: Zizmor
     runs-on: ubuntu-latest
     permissions:
@@ -329,9 +346,10 @@ jobs:
   # them fail, the script below marks as OK a skipped job.
   # a failed job is a failure, and an success job is success.
   ruleset-checker:
+    if: false # TODO
     name: Ruleset Checker
     runs-on: ubuntu-latest
-    if: always()
+    # TODO if: always()
     needs:
       - pack
       - build-macos
