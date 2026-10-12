@@ -35,6 +35,10 @@
 #define YES 1
 #define DEFAULT_PROGNAME "erl"
 
+#if defined(__APPLE__)
+#  include <mach-o/dyld.h>
+#endif
+
 #ifdef __WIN32__
 #define INI_FILENAME L"erl.ini"
 #define INI_SECTION "erlang"
@@ -1696,6 +1700,36 @@ get_home(void)
 
 #else
 
+/* Returns the resolved path of the running executable, or NULL when it cannot
+ * be determined on this platform. */
+static char*
+find_own_executable(char *buffer, size_t size)
+{
+    char resolved[PATH_MAX];
+#if defined(__APPLE__)
+    uint32_t len = (uint32_t) size;
+    if (_NSGetExecutablePath(buffer, &len) != 0) {
+	return NULL;
+    }
+#elif defined(__linux__)
+    ssize_t len = readlink("/proc/self/exe", buffer, size - 1);
+    if (len < 0) {
+	return NULL;
+    }
+    buffer[len] = '\0';
+#else
+    (void) buffer;
+    (void) size;
+    (void) resolved;
+    return NULL;
+#endif
+    if (realpath(buffer, resolved) != NULL) {
+	strncpy(buffer, resolved, size);
+	buffer[size-1] = '\0';
+    }
+    return buffer;
+}
+
 static void
 get_parameters(int argc, char** argv)
 {
@@ -1711,11 +1745,17 @@ get_parameters(int argc, char** argv)
 
     bindir = get_env("BINDIR");
     if (!bindir) {
-	/* Determine bindir from absolute path to executable */
+	/* Determine bindir from the absolute path to this executable. When
+	 * erlexec is started through a symbolic link such as bin/erl, the
+	 * link is resolved so that bindir is the directory of erlexec
+	 * itself. */
 	char *p;
 	char buffer[PATH_MAX];
-	strncpy(buffer, argv[0], sizeof(buffer));
-	buffer[sizeof(buffer)-1] = '\0';
+
+	if (!find_own_executable(buffer, sizeof(buffer))) {
+	    strncpy(buffer, argv[0], sizeof(buffer));
+	    buffer[sizeof(buffer)-1] = '\0';
+	}
 	
 	for (p = buffer+strlen(buffer)-1 ; p >= buffer && *p != '/'; --p)
 	    ;
@@ -1724,6 +1764,9 @@ get_parameters(int argc, char** argv)
     }
 
     rootdir = get_env("ROOTDIR");
+    if (!rootdir) {
+	rootdir = get_env("ERL_ROOTDIR");
+    }
     if (!rootdir) {
 	/* Determine rootdir from absolute path to bindir */
 	char *p;
@@ -1743,6 +1786,13 @@ get_parameters(int argc, char** argv)
     if (!progname || !emu || !rootdir || !bindir) {
 	error("PROGNAME, EMU, ROOTDIR and BINDIR  must be set");
     }
+
+    /* The emulator and the programs it starts expect these in the
+     * environment; the erl shell script used to set them. */
+    set_env("BINDIR", bindir);
+    set_env("ROOTDIR", rootdir);
+    set_env("EMU", emu);
+    set_env("PROGNAME", progname);
 }
 
 static void
