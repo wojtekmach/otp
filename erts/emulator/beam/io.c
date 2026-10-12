@@ -2978,27 +2978,22 @@ erl_drv_set_os_pid(ErlDrvPort ix, ErlDrvSInt pid) {
 
 }
 
-void erts_init_io(int port_tab_size,
-		  int port_tab_size_ignore_files,
-		  int legacy_port_tab)
+/*
+ * The port table is set up early, before the rest of the I/O
+ * initialization, so that the thread that fills it in (see
+ * erts_ptab_init_table()) has time to finish while the emulator
+ * initializes everything else.
+ */
+void erts_init_port_table(int port_tab_size,
+                          int port_tab_size_ignore_files,
+                          int legacy_port_tab)
 {
-    ErtsStaticDriver* dp;
     UWord common_element_size;
-    erts_rwmtx_opt_t drv_list_rwmtx_opts = ERTS_RWMTX_OPT_DEFAULT_INITER;
-    drv_list_rwmtx_opts.type = ERTS_RWMTX_TYPE_EXTREMELY_FREQUENT_READ;
-    drv_list_rwmtx_opts.lived = ERTS_RWMTX_LONG_LIVED;
-
-    erts_atomic64_init_nob(&bytes_in, 0);
-    erts_atomic64_init_nob(&bytes_out, 0);
 
     common_element_size = ERTS_ALC_DATA_ALIGN_SIZE(sizeof(Port));
     common_element_size += ERTS_ALC_DATA_ALIGN_SIZE(sizeof(ErtsPortTaskBusyPortQ));
     common_element_size += 10; /* name */
     common_element_size += sizeof(erts_mtx_t);
-
-    init_xports_list_alloc();
-
-    pdl_init();
 
     if (!port_tab_size_ignore_files) {
 	int max_files = sys_max_files();
@@ -3011,14 +3006,6 @@ void erts_init_io(int port_tab_size,
     else if (port_tab_size < ERTS_MIN_PORTS)
 	port_tab_size = ERTS_MIN_PORTS;
 
-    erts_rwmtx_init_opt(&erts_driver_list_lock, &drv_list_rwmtx_opts, "driver_list", NIL,
-        ERTS_LOCK_FLAGS_PROPERTY_STATIC | ERTS_LOCK_FLAGS_CATEGORY_IO);
-    driver_list = NULL;
-    erts_tsd_key_create(&driver_list_lock_status_key,
-			    "erts_driver_list_lock_status_key");
-    erts_tsd_key_create(&driver_list_last_error_key,
-			    "erts_driver_list_last_error_key");
-
     erts_ptab_init_table(&erts_port,
 			 ERTS_ALC_T_PORT_TABLE,
 			 NULL,
@@ -3028,6 +3015,29 @@ void erts_init_io(int port_tab_size,
 			 "port_table",
 			 legacy_port_tab,
 			 1);
+}
+
+void erts_init_io(void)
+{
+    ErtsStaticDriver* dp;
+    erts_rwmtx_opt_t drv_list_rwmtx_opts = ERTS_RWMTX_OPT_DEFAULT_INITER;
+    drv_list_rwmtx_opts.type = ERTS_RWMTX_TYPE_EXTREMELY_FREQUENT_READ;
+    drv_list_rwmtx_opts.lived = ERTS_RWMTX_LONG_LIVED;
+
+    erts_atomic64_init_nob(&bytes_in, 0);
+    erts_atomic64_init_nob(&bytes_out, 0);
+
+    init_xports_list_alloc();
+
+    pdl_init();
+
+    erts_rwmtx_init_opt(&erts_driver_list_lock, &drv_list_rwmtx_opts, "driver_list", NIL,
+        ERTS_LOCK_FLAGS_PROPERTY_STATIC | ERTS_LOCK_FLAGS_CATEGORY_IO);
+    driver_list = NULL;
+    erts_tsd_key_create(&driver_list_lock_status_key,
+			    "erts_driver_list_lock_status_key");
+    erts_tsd_key_create(&driver_list_last_error_key,
+			    "erts_driver_list_last_error_key");
 
     sys_init_io();
 
