@@ -32,7 +32,9 @@ include $(ERL_TOP)/make/$(TARGET)/otp.mk
 SS_ROOT = $(ERL_TOP)/erts/start_scripts
 SS_TMP = $(SS_ROOT)/tmp
 LIBPATH= $(ERL_TOP)/lib
-SCRIPT_PATH = -I$(LIBPATH)/kernel/ebin -I$(LIBPATH)/stdlib/ebin -I$(LIBPATH)/sasl/ebin
+# The newly built sasl must be used to generate the scripts (not the one in
+# the bootstrap), since it decides which modules the boot loads in one batch.
+SCRIPT_PATH = -pa $(LIBPATH)/sasl/ebin -I$(LIBPATH)/kernel/ebin -I$(LIBPATH)/stdlib/ebin -I$(LIBPATH)/sasl/ebin
 BOOTSTRAP_LIBPATH=$(BOOTSTRAP_TOP)/lib
 BOOTSTRAP_SCRIPT_PATH = -I$(BOOTSTRAP_LIBPATH)/kernel/ebin -I$(BOOTSTRAP_LIBPATH)/stdlib/ebin
 
