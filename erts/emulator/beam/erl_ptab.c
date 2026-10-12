@@ -35,6 +35,9 @@
 #include "erl_ptab.h"
 #include "erl_binary.h"
 
+static void ptab_fill_tables(ErtsPTab *ptab);
+static void *ptab_fill_tables_thread(void *vptab);
+
 typedef struct ErtsPTabListBifData_ ErtsPTabListBifData;
 
 #define ERTS_PTAB_NEW_MAX_RESERVE_FAIL 1000
@@ -367,9 +370,8 @@ erts_ptab_init_table(ErtsPTab *ptab,
 		     int atomic_refc)
 {
     size_t tab_sz, alloc_sz;
-    Uint32 bits, cl, cli, ix, ix_per_cache_line, tab_cache_lines; 
+    Uint32 bits, ix_per_cache_line, tab_cache_lines;
     char *tab_end;
-    erts_atomic_t *tab_entry;
     erts_rwmtx_opt_t rwmtx_opts = ERTS_RWMTX_OPT_DEFAULT_INITER;
     rwmtx_opts.type = ERTS_RWMTX_TYPE_EXTREMELY_FREQUENT_READ;
     rwmtx_opts.lived = ERTS_RWMTX_LONG_LIVED;
@@ -396,11 +398,6 @@ erts_ptab_init_table(ErtsPTab *ptab,
 	alloc_sz += ERTS_ALC_CACHE_LINE_ALIGN_SIZE(size*sizeof(erts_atomic_t));
     ptab->r.o.tab = erts_alloc_permanent_cache_aligned(atype, alloc_sz);
     tab_end = ((char *) ptab->r.o.tab) + tab_sz;
-    tab_entry = ptab->r.o.tab;
-    while (tab_end > ((char *) tab_entry)) {
-	erts_atomic_init_nob(tab_entry, ERTS_AINT_NULL);
-	tab_entry++;
-    }
 
     tab_cache_lines = tab_sz/ERTS_CACHE_LINE_SIZE;
     ix_per_cache_line = (ERTS_CACHE_LINE_SIZE/sizeof(erts_atomic_t));
@@ -447,19 +444,28 @@ erts_ptab_init_table(ErtsPTab *ptab,
 
 	ASSERT(ptab->r.o.dix_cl_shift + ptab->r.o.dix_cli_shift == bits);
 
-	ix = 0;
-	for (cl = 0; cl < tab_cache_lines; cl++) {
-	    for (cli = 0; cli < ix_per_cache_line; cli++) {
-		erts_atomic_init_nob(&ptab->r.o.free_id_data[ix],
-                                     cli*tab_cache_lines+cl);
-		ASSERT(erts_atomic_read_nob(&ptab->r.o.free_id_data[ix]) != ptab->r.o.invalid_data);
-		ix++;
-	    }
-	}
-
 	erts_atomic32_init_nob(&ptab->vola.tile.aid_ix, -1);
 	erts_atomic32_init_nob(&ptab->vola.tile.fid_ix, -1);
 
+    }
+
+    /* Filling in the tables touches two words per element (16 MB with the
+     * default limits), which takes more than a millisecond. Do it in a
+     * thread so that it overlaps with the rest of the initialization;
+     * erts_ptab_init_table_finish() waits for it before the first element
+     * can be created. */
+    ptab->r.o.init_thread = 0;
+    {
+        ethr_thr_opts opts = ETHR_THR_OPTS_DEFAULT_INITER;
+        char name[] = "ptab_init";
+        opts.suggested_stack_size = 16;
+        opts.name = name;
+        if (ethr_thr_create(&ptab->r.o.init_tid, ptab_fill_tables_thread,
+                            (void *) ptab, &opts) == 0) {
+            ptab->r.o.init_thread = 1;
+        } else {
+            ptab_fill_tables(ptab);
+        }
     }
 
     erts_interval_init(&ptab->list.data.interval);
@@ -502,6 +508,7 @@ erts_ptab_new_element(ErtsPTab *ptab,
 		      void *init_arg,
 		      void (*init_ptab_el)(void *, Eterm))
 {
+    ASSERT(!ptab->r.o.init_thread);
     Uint32 pix, ix;
     Uint data;
     erts_aint32_t count;
@@ -1770,3 +1777,53 @@ debug_ptab_list_assert_error(char* expr, const char* file, int line, const char 
 }
 
 #endif
+
+/*
+ * Fill in the element table and the free id table of a ptab. Done by a
+ * helper thread started by erts_ptab_init_table().
+ */
+static void
+ptab_fill_tables(ErtsPTab *ptab)
+{
+    size_t tab_sz = ERTS_ALC_CACHE_LINE_ALIGN_SIZE(ptab->r.o.max
+                                                   * sizeof(erts_atomic_t));
+    erts_atomic_t *tab_entry = ptab->r.o.tab;
+    char *tab_end = ((char *) ptab->r.o.tab) + tab_sz;
+
+    while (tab_end > ((char *) tab_entry)) {
+	erts_atomic_init_nob(tab_entry, ERTS_AINT_NULL);
+	tab_entry++;
+    }
+
+    if (ptab->r.o.free_id_data) {
+	Uint32 tab_cache_lines = tab_sz/ERTS_CACHE_LINE_SIZE;
+	Uint32 ix_per_cache_line = (ERTS_CACHE_LINE_SIZE/sizeof(erts_atomic_t));
+	Uint32 cl, cli, ix = 0;
+
+	for (cl = 0; cl < tab_cache_lines; cl++) {
+	    for (cli = 0; cli < ix_per_cache_line; cli++) {
+		erts_atomic_init_nob(&ptab->r.o.free_id_data[ix],
+                                     cli*tab_cache_lines+cl);
+		ASSERT(erts_atomic_read_nob(&ptab->r.o.free_id_data[ix]) != ptab->r.o.invalid_data);
+		ix++;
+	    }
+	}
+    }
+}
+
+static void *
+ptab_fill_tables_thread(void *vptab)
+{
+    ptab_fill_tables((ErtsPTab *) vptab);
+    return NULL;
+}
+
+void
+erts_ptab_init_table_finish(ErtsPTab *ptab)
+{
+    if (ptab->r.o.init_thread) {
+	if (ethr_thr_join(ptab->r.o.init_tid, NULL) != 0)
+	    erts_exit(ERTS_ABORT_EXIT, "Failed to join the table init thread\n");
+	ptab->r.o.init_thread = 0;
+    }
+}

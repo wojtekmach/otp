@@ -139,6 +139,9 @@ typedef struct {
     void (*release_element)(void *);
     UWord element_size;
     int atomic_refc;
+    /* Thread that fills in the tables at init; see erts_ptab_init_table_finish() */
+    ethr_tid init_tid;
+    int init_thread;
 } ErtsPTabReadOnlyData;
 
 typedef struct {
@@ -212,6 +215,7 @@ void erts_ptab_init_table(ErtsPTab *ptab,
 			  char *name,
 			  int legacy,
 			  int atomic_refc);
+void erts_ptab_init_table_finish(ErtsPTab *ptab);
 int erts_ptab_new_element(ErtsPTab *ptab,
 			  ErtsPTabElementCommon *ptab_el,
 			  void *init_arg,

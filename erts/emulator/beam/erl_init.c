@@ -268,6 +268,7 @@ erl_init(int ncpu,
     erts_init_time(time_correction, time_warp_mode);
     erts_init_sys_common_misc();
     erts_init_process(ncpu, proc_tab_sz, legacy_proc_tab);
+    erts_init_port_table(port_tab_sz, port_tab_sz_ignore_files, legacy_port_tab);
     erts_init_scheduling(no_schedulers,
 			 no_schedulers_online,
                          erts_no_poll_threads,
@@ -308,7 +309,7 @@ erl_init(int ncpu,
     init_dist();
     erl_drv_thr_init();
     erts_init_async();
-    erts_init_io(port_tab_sz, port_tab_sz_ignore_files, legacy_port_tab);
+    erts_init_io();
     init_load();
     erts_init_bif();
     erts_init_bif_chksum();
@@ -326,6 +327,11 @@ erl_init(int ncpu,
     erts_mseg_late_init(); /* Must be after timer (erts_init_time()) and thread
 			      initializations */
 #endif
+    /* The process and port tables are filled in by helper threads started
+     * by erts_ptab_init_table(); wait for them here, since the first port
+     * (the forker) is created by erl_sys_late_init(). */
+    erts_ptab_init_table_finish(&erts_proc);
+    erts_ptab_init_table_finish(&erts_port);
     erl_sys_late_init();
     packet_parser_init();
     erl_nif_init();
