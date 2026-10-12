@@ -271,28 +271,38 @@ static int parse_atom_chunk(BeamFile *beam,
     atoms->entries[0] = THE_NON_VALUE;
     atoms->count = count;
 
+    /* The atoms are interned under one write lock, which saves one or two
+     * lock operations per atom; on a malformed chunk we release it before
+     * failing. */
+    erts_atom_put_begin();
     for (i = 1; i < count; i++) {
         const byte *string;
-        Eterm atom;
+        Eterm atom = THE_NON_VALUE;
         Uint length;
+        bool ok;
 
         if (long_counts) {
             TaggedNumber len;
-            LoadAssert(beamreader_read_tagged(&reader, &len));
-            LoadAssert(len.size == 0);
-            length = (Uint) len.word_value;
+            ok = beamreader_read_tagged(&reader, &len) && len.size == 0;
+            length = ok ? (Uint) len.word_value : 0;
         } else {
             byte len;
-            LoadAssert(beamreader_read_u8(&reader, &len));
-            length = len;
+            ok = beamreader_read_u8(&reader, &len);
+            length = ok ? len : 0;
         }
 
-        LoadAssert(beamreader_read_bytes(&reader, length, &string));
-        atom = erts_atom_put(string, length, ERTS_ATOM_ENC_UTF8, 0);
-        LoadAssert(atom != THE_NON_VALUE);
+        ok = ok && beamreader_read_bytes(&reader, length, &string);
+        if (ok) {
+            atom = erts_atom_put_utf8_locked(string, length);
+        }
+        if (atom == THE_NON_VALUE) {
+            erts_atom_put_end();
+            LoadError("corrupt atom table");
+        }
 
         atoms->entries[i] = atom;
     }
+    erts_atom_put_end();
 
     beam->module = atoms->entries[1];
 
