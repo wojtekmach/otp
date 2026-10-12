@@ -842,17 +842,13 @@ case $ARCH-$OPSYS in
 		;;
 esac
 
+dnl The emulator used to be linked with the Carbon and Cocoa frameworks on
+dnl Darwin, but no longer references any symbol in them. Loading the
+dnl frameworks costs about a millisecond on every start, so they are no
+dnl longer linked.
 AC_MSG_CHECKING(if VM has to be linked with Carbon framework)
-case $ARCH-$OPSYS in
-	*-darwin*)
-  		LIBCARBON="-framework Carbon -framework Cocoa"
-		AC_MSG_RESULT([yes])
-		;;
-	*)
-		LIBCARBON=
-		AC_MSG_RESULT([no])
-		;;
-esac
+LIBCARBON=
+AC_MSG_RESULT([no])
 	
 AC_SUBST(LIBCARBON)
 

@@ -9414,18 +9414,9 @@ esac
 
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking if VM has to be linked with Carbon framework" >&5
 printf %s "checking if VM has to be linked with Carbon framework... " >&6; }
-case $ARCH-$OPSYS in
-	*-darwin*)
-  		LIBCARBON="-framework Carbon -framework Cocoa"
-		{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: yes" >&5
-printf "%s\n" "yes" >&6; }
-		;;
-	*)
-		LIBCARBON=
+LIBCARBON=
 		{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
 printf "%s\n" "no" >&6; }
-		;;
-esac
 
 
 
