@@ -94,12 +94,7 @@ local_setup:
 		cp $(ERL_TOP)/bin/erl.ini $(ERL_TOP)/bin/$(TARGET)/erl.ini; \
 	else \
 	cd etc/unix && $(MAKE); \
-	sed	-e "s;%FINAL_ROOTDIR%;$(ERL_TOP);"   \
-		-e "s;erts-.*/bin;bin/$(TARGET);"    \
-		-e "s;EMU=.*;EMU=beam$(TYPEMARKER);" \
-		-e "s;%DYN_ERL_PATH%;$(TARGET)/dyn_erl;" \
-		-e "s;%DYN_ROOTDIR_BASE_EXT%;;" \
-	        $(ERL_TOP)/erts/etc/unix/erl.src.src > $(ERL_TOP)/bin/erl; \
+	ln -s $(TARGET)/erlexec $(ERL_TOP)/bin/erl; \
 	sed	-e "s;%SRC_ROOTDIR%;$(ERL_TOP);"   \
 		-e "s;%TARGET%;$(TARGET);"    \
 		-e "s;%VSN%;$(VSN);"    \
