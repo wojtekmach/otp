@@ -54,6 +54,7 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <spawn.h>
 
 #define WANT_NONBLOCKING    /* must define this to pull in defs from sys.h */
 #include "sys.h"
@@ -1629,6 +1630,45 @@ static ErlDrvData forker_start(ErlDrvPort port_num, char* name,
 
     forker_fd = fds[0];
 
+#if defined(POSIX_SPAWN_SETSID)
+    /* posix_spawn() does not copy the address space of the emulator, which
+     * fork() does, so it is faster for a process of this size. The child
+     * gets the same fd 3, session and arguments as with fork() below. */
+    {
+        char *cs_argv[FORKER_ARGV_NO_OF_ARGS] =
+            {CHILD_SETUP_PROG_NAME, NULL, NULL};
+        char buff[128];
+        posix_spawn_file_actions_t file_actions;
+        posix_spawnattr_t attr;
+        pid_t child_pid;
+        extern char **environ;
+
+        snprintf(buff, 128, "%d", sys_max_files());
+        cs_argv[FORKER_ARGV_MAX_FILES] = buff;
+
+        posix_spawn_file_actions_init(&file_actions);
+        /* We preallocate fd 3 for the uds fd */
+        if (fds[1] != 3) {
+            posix_spawn_file_actions_adddup2(&file_actions, fds[1], 3);
+        }
+        posix_spawnattr_init(&attr);
+        posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETSID);
+
+        unbind = erts_sched_bind_atfork_prepare();
+        res = posix_spawn(&child_pid, child_setup_prog, &file_actions, &attr,
+                          cs_argv, environ);
+        erts_sched_bind_atfork_parent(unbind);
+
+        posix_spawnattr_destroy(&attr);
+        posix_spawn_file_actions_destroy(&file_actions);
+        if (res != 0) {
+            erts_exit(ERTS_ABORT_EXIT, "Could not start %s: %d\n",
+                      child_setup_prog, res);
+        }
+        i = child_pid;
+        (void) i;
+    }
+#else
     unbind = erts_sched_bind_atfork_prepare();
 
     i = fork();
@@ -1662,6 +1702,7 @@ static ErlDrvData forker_start(ErlDrvPort port_num, char* name,
     }
 
     erts_sched_bind_atfork_parent(unbind);
+#endif
 
     erts_free(ERTS_ALC_T_CS_PROG_PATH, child_setup_prog);
 
