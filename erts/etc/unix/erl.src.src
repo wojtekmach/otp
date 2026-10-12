@@ -44,7 +44,15 @@ find_rootdir() {
 
 if [ -z "$ERL_ROOTDIR" ]
 then
-    ROOTDIR=$(find_rootdir "$0" "%FINAL_ROOTDIR%")
+    # Fast path: the installation is where it was installed. The directory
+    # walk in find_rootdir forks several processes per level and is only
+    # needed when the installation has been moved.
+    if [ -x "%FINAL_ROOTDIR%/erts-%VSN%/bin/erlexec" ]
+    then
+        ROOTDIR="%FINAL_ROOTDIR%"
+    else
+        ROOTDIR=$(find_rootdir "$0" "%FINAL_ROOTDIR%")
+    fi
 else
     ROOTDIR="$ERL_ROOTDIR"
 fi
