@@ -210,6 +210,18 @@ erts_update_ranges(const BeamCodeHeader* code, Uint size)
 					need * sizeof(Range));
 	    r[dst].allocated = need;
 	    write_ptr = r[dst].modules;
+	} else if (write_ptr - r[dst].modules >= r[dst].allocated) {
+	    /* More modules than the initial table holds: grow it. */
+	    Sint old = r[dst].allocated;
+	    Sint need = 2 * old;
+	    Range *grown = erts_alloc(ERTS_ALC_T_MODULE_REFS,
+				      need * sizeof(Range));
+	    sys_memcpy(grown, r[dst].modules, old * sizeof(Range));
+	    erts_free(ERTS_ALC_T_MODULE_REFS, r[dst].modules);
+	    erts_atomic_add_nob(&mem_used, need - old);
+	    r[dst].modules = grown;
+	    r[dst].allocated = need;
+	    write_ptr = grown + old;
 	}
     }
 
