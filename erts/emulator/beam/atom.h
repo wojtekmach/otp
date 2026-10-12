@@ -159,6 +159,9 @@ int atom_table_sz(void);	/* table size in bytes, excluding stored objects */
 Eterm am_atom_put(const char*, Sint); /* ONLY 7-bit ascii! */
 Eterm erts_atom_put(const byte *name, Sint len, ErtsAtomEncoding enc, int trunc);
 int erts_atom_put_index(const byte *name, Sint len, ErtsAtomEncoding enc, int trunc);
+void erts_atom_put_begin(void);
+Eterm erts_atom_put_utf8_locked(const byte *name, Sint len);
+void erts_atom_put_end(void);
 void init_atom_table(void);
 void atom_info(fmtfn_t, void *);
 void dump_atoms(fmtfn_t, void *);

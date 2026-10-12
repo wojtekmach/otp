@@ -348,6 +348,63 @@ erts_atom_put(const byte *name, Sint len, ErtsAtomEncoding enc, int trunc)
 	return THE_NON_VALUE;
 }
 
+/*
+ * Batched interning for the loader: erts_atom_put_begin() takes the write
+ * lock once, erts_atom_put_utf8_locked() then behaves like
+ * erts_atom_put(name, len, ERTS_ATOM_ENC_UTF8, 0) without locking, and
+ * erts_atom_put_end() releases the lock. This saves one or two lock
+ * operations per atom when a module is loaded.
+ */
+void
+erts_atom_put_begin(void)
+{
+    atom_write_lock();
+}
+
+void
+erts_atom_put_end(void)
+{
+    atom_write_unlock();
+}
+
+Eterm
+erts_atom_put_utf8_locked(const byte *name, Sint len)
+{
+    const byte *err_pos;
+    Uint no_chars;
+    Sint no_latin1_chars;
+    Atom a;
+    int aix;
+
+#ifdef ERTS_ATOM_PUT_OPS_STAT
+    erts_atomic_inc_nob(&atom_put_ops);
+#endif
+
+    if (len < 0 || len > MAX_ATOM_SZ_LIMIT || len > ERTS_SINT16_MAX)
+        return THE_NON_VALUE;
+
+    a.len = (Uint) len;
+    a.u.name = (byte *) name;
+    aix = index_get(&erts_atom_table, (void*) &a);
+    if (aix >= 0) {
+        /* Already in table no need to verify it */
+        return make_atom(aix);
+    }
+
+    /* Need to verify encoding and length */
+    if (erts_analyze_utf8_x((byte *) name, (Uint) len, &err_pos, &no_chars,
+                            NULL, &no_latin1_chars, MAX_ATOM_CHARACTERS)
+        != ERTS_UTF8_OK) {
+        return THE_NON_VALUE;
+    }
+    ASSERT(no_chars <= MAX_ATOM_CHARACTERS);
+    ASSERT(-1 <= no_latin1_chars && no_latin1_chars <= MAX_ATOM_CHARACTERS);
+
+    a.latin1_chars = (Sint16) no_latin1_chars;
+    aix = index_put(&erts_atom_table, (void*) &a);
+    return make_atom(aix);
+}
+
 Eterm
 am_atom_put(const char* name, Sint len)
 {
