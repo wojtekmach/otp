@@ -5698,14 +5698,22 @@ check_format_string(Fmt, Strict) ->
     extract_sequences(Fmt, [], Strict).
 
 extract_sequences(Fmt, Need0, Strict) ->
-    case string:find(Fmt, [$~]) of
+    case skip_to_tilde(Fmt) of
         nomatch -> {ok,lists:reverse(Need0)};         %That's it
-        [$~|Fmt1] ->
+        Fmt1 ->
             case extract_sequence(1, Fmt1, Need0, Strict) of
                 {ok,Need1,Rest} -> extract_sequences(Rest, Need1, Strict);
                 Error -> Error
             end
     end.
+
+%% The format string is a flat list of characters here. A plain scan
+%% is used rather than string:find/2, which would load the string and
+%% unicode_util modules; that matters when erl_eval checks a command
+%% at boot.
+skip_to_tilde([$~|Fmt]) -> Fmt;
+skip_to_tilde([_|Fmt]) -> skip_to_tilde(Fmt);
+skip_to_tilde([]) -> nomatch.
 
 extract_sequence(1, [$-,C|Fmt], Need, Strict)
   when is_integer(C), C >= $0, C =< $9 ->
