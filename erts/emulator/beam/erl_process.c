@@ -2541,12 +2541,17 @@ handle_reap_ports(ErtsAuxWorkData *awdp, erts_aint32_t aux_work, int waiting)
 
     if (erts_atomic32_dec_read_acqb(&erts_halt_progress) == 0) {
 	int i, max = erts_ptab_max(&erts_port);
+        /* All run queues are halting, so no new ports can appear and the
+         * port count is stable; stop when all live ports have been seen
+         * instead of walking the whole table (a million entries). */
+        Sint32 left = erts_ptab_count(&erts_port);
 	erts_atomic32_set_nob(&erts_halt_progress, 1);
-	for (i = 0; i < max; i++) {
+	for (i = 0; i < max && left > 0; i++) {
 	    erts_aint32_t state;
 	    Port *prt = erts_pix2port(i);
 	    if (!prt)
 		continue;
+            left--;
 	    state = erts_atomic32_read_acqb(&prt->state);
 	    if (state & (ERTS_PORT_SFLGS_INVALID_DRIVER_LOOKUP
 			 | ERTS_PORT_SFLG_HALT))
