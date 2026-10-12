@@ -525,7 +525,9 @@ add_loader_path(IPath0,Mode) ->
             Pa = patch_path(Pa0),
             Pz = patch_path(Pz0),
             PrimP = patch_path(PrimP0),
-            IPath = patch_path(IPath0),
+            %% IPath0 only holds directories that make_path/2 has already
+            %% checked, so there is nothing to patch.
+            IPath = IPath0,
 
             Path0 = exclude_pa_pz(PrimP,Pa,Pz),
             Path1 = strip_path(Path0, Mode),

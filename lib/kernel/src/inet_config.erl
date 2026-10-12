@@ -221,13 +221,26 @@ add_dns_lookup([],Acc) ->
 %% and initialize the search option with the parts of domain
 %%
 set_hostname() ->
+    set_hostname(gethostname()).
+
+%% Prefer the NIF when it is available: it does not need a socket, and the
+%% first socket of a process can take a millisecond on some systems.
+gethostname() ->
+    try prim_net:gethostname() of
+        {ok, _} = Res -> Res;
+        _ -> gethostname_socket()
+    catch
+        error:_ -> gethostname_socket()
+    end.
+
+gethostname_socket() ->
     case inet_udp:open(0,[]) of
 	{ok,U} ->
 	    Res = inet:gethostname(U),
 	    inet_udp:close(U),
-	    set_hostname(Res);
+	    Res;
 	_ ->
-	    set_hostname({ok, []})
+	    {ok, []}
     end.
 
 set_hostname({ok,Name}) when length(Name) > 0 ->
