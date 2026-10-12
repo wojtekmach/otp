@@ -327,12 +327,6 @@ erl_init(int ncpu,
     erts_mseg_late_init(); /* Must be after timer (erts_init_time()) and thread
 			      initializations */
 #endif
-    /* The process and port tables are filled in by helper threads started
-     * by erts_ptab_init_table(); wait for them here, since the first port
-     * (the forker) is created by erl_sys_late_init(). */
-    erts_ptab_init_table_finish(&erts_proc);
-    erts_ptab_init_table_finish(&erts_port);
-    erl_sys_late_init();
     packet_parser_init();
     erl_nif_init();
     erts_msacc_init();
@@ -2577,6 +2571,13 @@ erl_start(int argc, char **argv)
 
     erts_initialized = 1;
 
+    /* The process and port tables are filled in by helper threads started
+     * by erts_ptab_init_table(). Wait for them here, right before the first
+     * port (the forker, created by erl_sys_late_init()) and the first
+     * process; by now the threads have normally finished. */
+    erts_ptab_init_table_finish(&erts_proc);
+    erts_ptab_init_table_finish(&erts_port);
+    erl_sys_late_init();
     erts_init_process_id = erl_first_process_otp(init, boot_argc, boot_argv);
     ASSERT(erts_init_process_id != ERTS_INVALID_PID);
 
