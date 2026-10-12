@@ -1549,7 +1549,11 @@ mandatory_modules() ->
      %% error_handler module.
      %%
      %% The list is the set of modules that a minimal start
-     %% (erl -noshell) loads anyway. Keep it sorted.
+     %% (erl -noshell -eval 'ok.') loads anyway. Keep it sorted. Modules
+     %% that only some starts need (unicode_util and string when a
+     %% command contains a format call, epp) are not listed: the ones
+     %% that are listed are compiled in parallel at boot, and the
+     %% largest of them sets the time of the batch.
      application,
      application_controller,
      application_master,
@@ -1560,12 +1564,10 @@ mandatory_modules() ->
      code_server,
      edlin,
      edlin_key,
-     epp,
      erl_anno,
      erl_distribution,
      erl_eval,
      erl_features,
-     erl_internal,
      erl_lint,
      erl_parse,
      erl_scan,
@@ -1617,7 +1619,6 @@ mandatory_modules() ->
      orddict,
      ordsets,
      os,
-     otp_internal,
      peer,
      prim_tty,
      prim_tty_sighandler,
@@ -1629,11 +1630,9 @@ mandatory_modules() ->
      rpc,
      sets,
      standard_error,
-     string,
      supervisor,
      supervisor_bridge,
      unicode,
-     unicode_util,
      user_drv,
      user_sup
     ].
