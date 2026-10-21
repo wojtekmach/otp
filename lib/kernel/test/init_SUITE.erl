@@ -694,7 +694,7 @@ boot_module_load(Config) ->
     %% preload manifest, so exclude it from the comparison.
     PlatformOptionalBootModules = sets:from_list([inet_gethost_native, prim_tty_sighandler]),
 
-    [BeforeKernelStart, MinimalModules, CodeModules, DefaultModules] =
+    [BeforeKernelStart, MinimalModules, CodeModules, DefaultModules, EvalModules] =
         parse(shell_env([{"KERNEL_BOOT_TEST_MODULE", "init_SUITE"}]) ++
               CommonArguments ++ " -mode test -s init stop"),
 
@@ -702,6 +702,7 @@ boot_module_load(Config) ->
     io:format("MinimalModules: ~p~n", [MinimalModules]),
     io:format("CodeModules: ~p~n", [CodeModules]),
     io:format("DefaultModules: ~p~n", [DefaultModules]),
+    io:format("EvalModules: ~p~n", [EvalModules]),
 
     BeforeKernelStartSet = sets:union(sets:from_list(BeforeKernelStart), PreLoaded),
     OptionalBootModules = sets:union(sets:from_list(CodeModules), PlatformOptionalBootModules),
@@ -736,9 +737,25 @@ boot_module_load(Config) ->
     %% Check that no minimal modules are part of the default modules
     ?assertEqual([], sets:to_list(sets:intersection(sets:from_list(MinimalModules), sets:from_list(DefaultModules)))),
 
-    %% Check that minimal and default modules are sorted
+    %% Check that minimal, default and eval modules are sorted
     ?assertEqual(MinimalModules, lists:sort(MinimalModules)),
     ?assertEqual(DefaultModules, lists:sort(DefaultModules)),
+    ?assertEqual(EvalModules, lists:sort(EvalModules)),
+
+    [EvalAfterKernelStart] =
+        parse(shell_env([{"ERL_AFLAGS", ""}, {"ERL_FLAGS", ""}, {"ERL_ZFLAGS", ""}]) ++
+                  ct:get_progname() ++ " +JPcover function -pa " ++ TestCodeDir ++
+                  " -noshell -mode minimal -eval \"init_SUITE:loaded_modules()\""),
+    io:format("EvalAfterKernelStart: ~p~n", [EvalAfterKernelStart]),
+    EvalModulesSet = sets:from_list(EvalModules),
+    EvalAfterKernelStartSet = sets:union([sets:from_list(EvalAfterKernelStart),
+                                          PreLoaded, OptionalBootModules]),
+
+    %% Check that only the minimal and eval modules run with -eval
+    ?assertEqualSets(sets:union(MinimalModulesSet, EvalModulesSet), EvalAfterKernelStartSet),
+
+    %% Check that no other list contains an eval module
+    ?assertEqual([], sets:to_list(sets:intersection(EvalModulesSet, DefaultModulesSet))),
 
     %% Test that escript also loads modules that it should
     PreloadFile = filename:join(proplists:get_value(priv_dir, Config), "preload.erl"),
@@ -827,6 +844,8 @@ preload(Modules) ->
     erlang:display(maps:get(code, Modules)),
     erlang:display_string(".\n"),
     erlang:display(maps:get(default, Modules)),
+    erlang:display_string(".\n"),
+    erlang:display(maps:get(eval, Modules)),
     erlang:display_string(".\n").
 
 loaded_modules() ->

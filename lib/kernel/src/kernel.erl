@@ -147,6 +147,23 @@ config_change(Changed, New, Removed) ->
          user_drv, %% used by user_sup
          user_sup %% used by kernel_sup
         ]).
+-define(EVAL_MODULES,
+        [c, %% used by the start script to read .erlang
+         erl_anno, %% used by erl_parse
+         erl_eval, %% used by -eval and to read .erlang
+         erl_internal, %% used by erl_lint
+         erl_lint, %% used by erl_eval
+         erl_parse, %% used by -eval
+         erl_scan, %% used by -eval
+         file, %% used by c to read .erlang
+         file_io_server, %% used by file
+         gb_sets, %% used by erl_lint
+         orddict, %% used by erl_eval
+         ordsets, %% used by erl_lint
+         otp_internal, %% used by erl_lint
+         raw_file_io, %% used by file_io_server
+         sets %% used by erl_lint
+        ]).
 -define(DEFAULT_MODULES,
         [ %% All of these are used to start dist + inet_db
          erl_distribution,
@@ -163,10 +180,11 @@ config_change(Changed, New, Removed) ->
          rpc]).
 
 preload(minimal) ->
-    ok = init:ensure_modules_loaded(?MINIMAL_MODULES ++ ?CODE_MODULES),
+    ok = init:ensure_modules_loaded(?MINIMAL_MODULES ++ ?EVAL_MODULES ++ ?CODE_MODULES),
     minimal;
 preload(default) ->
-    ok = init:ensure_modules_loaded(?MINIMAL_MODULES ++ ?DEFAULT_MODULES ++ ?CODE_MODULES),
+    ok = init:ensure_modules_loaded(?MINIMAL_MODULES ++ ?EVAL_MODULES ++ ?DEFAULT_MODULES ++
+                                    ?CODE_MODULES),
     default;
 preload(test) ->
     %% Doing apply/3 keeps the list_to_atom away from generating compiler warnings
@@ -174,6 +192,7 @@ preload(test) ->
     {module, TestModule} = init:ensure_loaded(TestModule),
     TestModule:preload(#{code => ?CODE_MODULES,
                          minimal => ?MINIMAL_MODULES,
+                         eval => ?EVAL_MODULES,
                          default => ?DEFAULT_MODULES}),
     preload(default).
 
