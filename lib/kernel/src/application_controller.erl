@@ -2380,10 +2380,17 @@ test_make_apps([], Res) ->
 test_make_apps([A|Apps], Res) ->
     test_make_apps(Apps, [make_appl(A) | Res]).
 
+%% An encoding comment always contains "coding". When the file does
+%% not contain it, do not load epp, because epp is a large module.
 file_binary_to_list(Bin) ->
-    Enc = case epp:read_encoding_from_binary(Bin) of
-              none -> epp:default_encoding();
-              Encoding -> Encoding
+    Enc = case binary:match(Bin, <<"coding">>) of
+              nomatch ->
+                  utf8; %% the same as epp:default_encoding()
+              _ ->
+                  case epp:read_encoding_from_binary(Bin) of
+                      none -> epp:default_encoding();
+                      Encoding -> Encoding
+                  end
           end,
     case catch unicode:characters_to_list(Bin, Enc) of
         String when is_list(String) ->
