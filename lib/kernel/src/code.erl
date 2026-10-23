@@ -1507,9 +1507,18 @@ do_par(Fun, L) ->
 
 do_par_fun(Fun, L) ->
     fun() ->
-	_ = [spawn_monitor(do_par_fun_each(Fun, Item)) || Item <- L],
+	do_par_spawn(Fun, L, 1, erlang:system_info(schedulers_online)),
 	exit(do_par_recv(length(L), [], []))
     end.
+
+%% Place the workers on all schedulers directly. At boot the other
+%% schedulers are asleep, and waiting for the load balancer to wake
+%% them makes the parallel load run mostly on one scheduler.
+do_par_spawn(Fun, [Item|Items], Next, S) ->
+    _ = spawn_opt(do_par_fun_each(Fun, Item), [monitor, {scheduler, Next}]),
+    do_par_spawn(Fun, Items, (Next rem S) + 1, S);
+do_par_spawn(_, [], _, _) ->
+    ok.
 
 -spec do_par_fun_each(par_fun_type(), term()) ->
 			  fun(() -> no_return()).
